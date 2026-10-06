@@ -150,6 +150,35 @@
   .muted-note{color:var(--faint);font-size:.76rem;text-align:center;margin-top:24px;line-height:1.6}
   .loading{text-align:center;color:var(--muted);padding:50px 0;font-size:.9rem}
 
+  /* view toggle + calendar */
+  .viewtoggle{display:inline-flex;background:var(--surface);border:1px solid var(--line-strong);
+    border-radius:999px;padding:3px;gap:2px;margin:6px 2px 16px}
+  .viewtoggle button{border:0;background:transparent;color:var(--muted);font-family:inherit;
+    font-weight:700;font-size:.82rem;padding:6px 18px;border-radius:999px;cursor:pointer;transition:.15s}
+  .viewtoggle button[aria-pressed="true"]{background:var(--accent);color:var(--ink-on-accent);box-shadow:var(--glow)}
+  .cal{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:16px 16px 14px;margin-bottom:20px}
+  .cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .cal-nav .t{font-family:var(--font-display);font-weight:700;font-size:1.1rem}
+  .cal-nav button{background:var(--surface-2);border:1px solid var(--line-strong);color:var(--fg);
+    border-radius:9px;width:34px;height:34px;cursor:pointer;font-size:1.1rem;line-height:1}
+  .cal-nav button:hover{border-color:var(--accent);color:var(--accent)}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+  .cal-grid .dow{text-align:center;font-size:.72rem;font-weight:700;color:var(--muted);padding:2px 0 6px}
+  .cal-grid .dow.sun{color:#ff8a8a}
+  .cal-grid .dow.sat{color:#8ab4ff}
+  .cal-cell{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:1px;border-radius:10px;font-size:.9rem;color:var(--muted);background:var(--surface-2);border:1px solid transparent}
+  .cal-cell.out{background:transparent}
+  .cal-cell.today{border-color:var(--line-strong)}
+  .cal-cell.has{background:var(--accent);color:var(--ink-on-accent);font-weight:700;cursor:pointer}
+  .cal-cell.has:hover{filter:brightness(1.05)}
+  .cal-cell.has.sel{outline:2px solid var(--accent);outline-offset:1px;box-shadow:var(--glow)}
+  .cal-cell .cnt{font-size:.58rem;font-weight:700;line-height:1}
+  .cal-sum{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);
+    font-size:.84rem;color:var(--muted);text-align:center}
+  .cal-sum b{color:var(--accent);font-weight:700}
+
   .gate{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:24px}
   .gate .box{background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius);
     box-shadow:var(--shadow);padding:30px 24px;max-width:340px;width:100%;text-align:center}
@@ -255,9 +284,12 @@ function makeDB(){
   "use strict";
   var WD = ["일","월","화","수","목","금","토"];
   var ROLES = {student:"학생", teacher:"선생님", parent:"학부모"};
-  var state = { role:"student", db:null, loaded:false, lessons:[], editingId:null, confirmId:null, formOpen:false };
+  var now0 = new Date();
+  var state = { role:"student", view:"list", calYM:{y:now0.getFullYear(), m:now0.getMonth()+1}, calSelected:null,
+    db:null, loaded:false, lessons:[], editingId:null, confirmId:null, formOpen:false };
 
   try{ var r = localStorage.getItem("tutorlog.role"); if(r && ROLES[r]) state.role = r; }catch(e){}
+  try{ var v = localStorage.getItem("tutorlog.view"); if(v==="cal"||v==="list") state.view = v; }catch(e){}
 
   var appEl = document.getElementById("app");
   var bannerEl = document.getElementById("banner");
@@ -307,8 +339,13 @@ function makeDB(){
       ep.textContent = canRecord() ? "위 ‘수업 기록하기’를 눌러 첫 수업을 남겨 보세요." : "학생·선생님이 수업을 기록하면 여기에 나타납니다.";
       em.appendChild(eb); em.appendChild(ep); root.appendChild(em);
     } else {
-      if(upcoming.length){ root.appendChild(sectionTitle("예정된 수업", upcoming.length)); appendGroups(root, upcoming, false); }
-      if(past.length){ root.appendChild(sectionTitle("지난 수업", past.length)); appendGroups(root, past, true); }
+      root.appendChild(buildViewToggle());
+      if(state.view==="cal"){
+        root.appendChild(buildCalendar(lessons));
+      } else {
+        if(upcoming.length){ root.appendChild(sectionTitle("예정된 수업", upcoming.length)); appendGroups(root, upcoming, false); }
+        if(past.length){ root.appendChild(sectionTitle("지난 수업", past.length)); appendGroups(root, past, true); }
+      }
     }
     appEl.innerHTML=""; appEl.appendChild(root);
   }
@@ -343,6 +380,88 @@ function makeDB(){
       if(mk!==curMonth){ curMonth=mk; var ml=document.createElement("div"); ml.className="month-label"; ml.textContent=mk; root.appendChild(ml); }
       root.appendChild(buildLesson(l, isPast));
     });
+  }
+
+  // view toggle + calendar
+  function setView(v){ state.view=v; state.calSelected=null; try{localStorage.setItem("tutorlog.view",v);}catch(e){} render(); }
+  function buildViewToggle(){
+    var w=document.createElement("div"); w.className="viewtoggle"; w.setAttribute("role","group"); w.setAttribute("aria-label","보기 전환");
+    [["list","목록"],["cal","달력"]].forEach(function(o){
+      var b=document.createElement("button"); b.textContent=o[1];
+      b.setAttribute("aria-pressed", state.view===o[0]?"true":"false");
+      b.onclick=function(){ if(state.view!==o[0]) setView(o[0]); };
+      w.appendChild(b);
+    });
+    return w;
+  }
+  function shiftMonth(delta){
+    var idx=(state.calYM.m-1)+delta, y=state.calYM.y;
+    y += Math.floor(idx/12); var m=((idx%12)+12)%12;
+    state.calYM={y:y, m:m+1}; state.calSelected=null; render();
+  }
+  function buildCalendar(lessons){
+    var frag=document.createDocumentFragment();
+    var y=state.calYM.y, m=state.calYM.m;
+    var byDate={}, monthLessons=[];
+    lessons.forEach(function(l){ var f=fmt(l.date); if(f.y===y && f.m===m){ byDate[l.date]=(byDate[l.date]||0)+1; monthLessons.push(l); } });
+
+    var cal=document.createElement("div"); cal.className="cal";
+    var nav=document.createElement("div"); nav.className="cal-nav";
+    var prev=document.createElement("button"); prev.type="button"; prev.textContent="‹"; prev.setAttribute("aria-label","이전 달"); prev.onclick=function(){ shiftMonth(-1); };
+    var t=document.createElement("div"); t.className="t"; t.textContent=y+"년 "+m+"월";
+    var next=document.createElement("button"); next.type="button"; next.textContent="›"; next.setAttribute("aria-label","다음 달"); next.onclick=function(){ shiftMonth(1); };
+    nav.appendChild(prev); nav.appendChild(t); nav.appendChild(next); cal.appendChild(nav);
+
+    var grid=document.createElement("div"); grid.className="cal-grid";
+    WD.forEach(function(w,i){ var dw=document.createElement("div"); dw.className="dow"+(i===0?" sun":i===6?" sat":""); dw.textContent=w; grid.appendChild(dw); });
+    var firstDow=new Date(y, m-1, 1).getDay();
+    var dim=new Date(y, m, 0).getDate();
+    for(var b=0;b<firstDow;b++){ var e=document.createElement("div"); e.className="cal-cell out"; grid.appendChild(e); }
+    var todayStr=todayISO();
+    for(var dn=1; dn<=dim; dn++){
+      var iso=y+"-"+pad(m)+"-"+pad(dn);
+      var dow=new Date(y, m-1, dn).getDay();
+      var cell=document.createElement("div"); cell.className="cal-cell";
+      if(iso===todayStr) cell.classList.add("today");
+      var num=document.createElement("span"); num.textContent=dn; cell.appendChild(num);
+      var cnt=byDate[iso];
+      if(cnt){
+        cell.classList.add("has");
+        if(state.calSelected===iso) cell.classList.add("sel");
+        if(cnt>1){ var c=document.createElement("span"); c.className="cnt"; c.textContent=cnt+"회"; cell.appendChild(c); }
+        (function(isov){ cell.onclick=function(){ state.calSelected=(state.calSelected===isov?null:isov); render(); }; })(iso);
+      } else {
+        if(dow===0) num.style.color="#ff8a8a";
+        else if(dow===6) num.style.color="#8ab4ff";
+      }
+      grid.appendChild(cell);
+    }
+    cal.appendChild(grid);
+
+    var sum=document.createElement("div"); sum.className="cal-sum";
+    if(monthLessons.length){
+      var dset={}; monthLessons.forEach(function(l){ var f=fmt(l.date); dset[new Date(f.y,f.m-1,f.d).getDay()]=true; });
+      var dows=[]; for(var i=0;i<7;i++){ if(dset[i]) dows.push(WD[i]); }
+      sum.innerHTML=""; sum.appendChild(document.createTextNode(m+"월 수업 "));
+      var bn=document.createElement("b"); bn.textContent=monthLessons.length+"회"; sum.appendChild(bn);
+      sum.appendChild(document.createTextNode(" · 요일 "));
+      var bd=document.createElement("b"); bd.textContent=dows.join("·"); sum.appendChild(bd);
+    } else {
+      sum.textContent = m+"월에는 기록된 수업이 없어요";
+    }
+    cal.appendChild(sum);
+    frag.appendChild(cal);
+
+    var show = state.calSelected ? monthLessons.filter(function(l){ return l.date===state.calSelected; }) : monthLessons.slice();
+    show.sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:0; });
+    if(show.length){
+      var sf = state.calSelected ? fmt(state.calSelected) : null;
+      var title = sf ? (sf.m+"월 "+sf.d+"일 ("+sf.wd+") 수업") : (m+"월 전체 수업");
+      frag.appendChild(sectionTitle(title, show.length));
+      var today=todayISO();
+      show.forEach(function(l){ frag.appendChild(buildLesson(l, l.date<today)); });
+    }
+    return frag;
   }
 
   function buildLesson(l, isPast){
