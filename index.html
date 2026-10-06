@@ -214,7 +214,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot }
+import { getFirestore, initializeFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -231,7 +231,9 @@ const PASSCODE = "axolve";
 
 function makeDB(){
   const app = initializeApp(firebaseConfig);
-  const fs = getFirestore(app);
+  var fs;
+  try{ fs = initializeFirestore(app, { experimentalAutoDetectLongPolling: true }); }
+  catch(e){ fs = getFirestore(app); }
   return {
     collection(name){
       const col = collection(fs, name);
@@ -536,12 +538,12 @@ function makeDB(){
     var watchdog = setTimeout(function(){
       if(!state.loaded){
         state.loaded=true;
-        showBanner("저장소 연결이 지연되고 있어요. Firebase 콘솔에서 Firestore 데이터베이스가 만들어져 있고(위치 서울) 규칙이 게시됐는지 확인한 뒤 새로고침해 주세요.");
+        showBanner("저장소에 연결하는 중이에요. 네트워크가 느리면 잠시 걸릴 수 있어요 — 연결되면 자동으로 사라집니다.");
         render();
       }
-    }, 8000);
+    }, 12000);
     state.db.collection("lessons").onSnapshot(function(snap){
-      clearTimeout(watchdog);
+      clearTimeout(watchdog); bannerEl.hidden=true;
       var arr=[];
       snap.docs.forEach(function(doc){ if(!doc.exists) return; var d=Object.assign({}, doc.data()); d.id=doc.id; arr.push(d); });
       state.lessons=arr; state.loaded=true; render();
