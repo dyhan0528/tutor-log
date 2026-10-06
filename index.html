@@ -533,11 +533,19 @@ function makeDB(){
   function boot(){
     try{ state.db = makeDB(); }
     catch(e){ state.loaded=true; showBanner("Firebase 초기화에 실패했어요. 설정값을 확인해 주세요."); render(); return; }
+    var watchdog = setTimeout(function(){
+      if(!state.loaded){
+        state.loaded=true;
+        showBanner("저장소 연결이 지연되고 있어요. Firebase 콘솔에서 Firestore 데이터베이스가 만들어져 있고(위치 서울) 규칙이 게시됐는지 확인한 뒤 새로고침해 주세요.");
+        render();
+      }
+    }, 8000);
     state.db.collection("lessons").onSnapshot(function(snap){
+      clearTimeout(watchdog);
       var arr=[];
       snap.docs.forEach(function(doc){ if(!doc.exists) return; var d=Object.assign({}, doc.data()); d.id=doc.id; arr.push(d); });
       state.lessons=arr; state.loaded=true; render();
-    }, function(err){ state.loaded=true; writeErr(err); render(); });
+    }, function(err){ clearTimeout(watchdog); state.loaded=true; writeErr(err); render(); });
   }
   window.__startApp = boot;
 })();
